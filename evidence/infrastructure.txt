@@ -1,0 +1,45 @@
+$ terraform output
+bastion_ssh = "ssh -i .secrets/id_ed25519 diploma@51.250.7.220"
+grafana_url = "http://84.201.135.19:3000/"
+kibana_url = "http://51.250.90.27:5601/"
+site_url = "http://62.84.117.222/"
+
+$ yc compute instance list
++----------------------+------------+---------------+---------+---------------+-------------+
+|          ID          |    NAME    |    ZONE ID    | STATUS  |  EXTERNAL IP  | INTERNAL IP |
++----------------------+------------+---------------+---------+---------------+-------------+
+| fhm1p3tu1j9stvakv6f8 | grafana    | ru-central1-a | RUNNING | 84.201.135.19 | 10.20.1.20  |
+| fhmgopi6335mjccpgba7 | bastion    | ru-central1-a | RUNNING | 51.250.7.220  | 10.20.1.10  |
+| fhmmu76rvdmm49nn9os2 | kibana     | ru-central1-a | RUNNING | 51.250.90.27  | 10.20.1.30  |
+| fhmphskughtmqepkpdhi | web-a      | ru-central1-a | RUNNING |               | 10.20.11.11 |
+| fv46jadq619uq12dgmar | prometheus | ru-central1-d | RUNNING |               | 10.20.12.20 |
+| fv48b3rh26c8ub4v1ngk | web-b      | ru-central1-d | RUNNING |               | 10.20.12.11 |
+| fv4a5i53ibqvv44sr0ha | elastic    | ru-central1-d | RUNNING |               | 10.20.12.30 |
++----------------------+------------+---------------+---------+---------------+-------------+
+
+$ yc vpc subnet list --folder-id ... (сеть diploma-net)
++----------------------+-------------------------------------+----------------------+----------------------+---------------+-----------------+
+|          ID          |                NAME                 |      NETWORK ID      |    ROUTE TABLE ID    |     ZONE      |      RANGE      |
++----------------------+-------------------------------------+----------------------+----------------------+---------------+-----------------+
+| e9bf88kcds3th56o1kl9 | diploma-private-a                   | enps2s634ji7ein839s9 | enpl56orq0rhi2jfpm1i | ru-central1-a | [10.20.11.0/24] |
+| e9bjti426g8poukev6qu | diploma-public-a                    | enps2s634ji7ein839s9 |                      | ru-central1-a | [10.20.1.0/24]  |
+| fl8g8cul299rb0n5t537 | diploma-private-d                   | enps2s634ji7ein839s9 | enpl56orq0rhi2jfpm1i | ru-central1-d | [10.20.12.0/24] |
+| fl8uok6j8edcpqtrojkb | diploma-public-d                    | enps2s634ji7ein839s9 |                      | ru-central1-d | [10.20.2.0/24]  |
++----------------------+-------------------------------------+----------------------+----------------------+---------------+-----------------+
+$ yc vpc security-group list
++----------------------+---------------------------------+--------------------------------+----------------------+
+|          ID          |              NAME               |          DESCRIPTION           |      NETWORK-ID      |
++----------------------+---------------------------------+--------------------------------+----------------------+
+| enp08n3rd4t57enjlrri | diploma-elastic                 |                                | enps2s634ji7ein839s9 |
+| enp961g6if6m3phkhqpv | diploma-alb                     |                                | enps2s634ji7ein839s9 |
+| enpgekekm0ahch2tcni9 | diploma-kibana                  |                                | enps2s634ji7ein839s9 |
+| enpk0vlp9c1gu1fo9dhm | diploma-web                     |                                | enps2s634ji7ein839s9 |
+| enplkiahhi7e4a1il227 | diploma-grafana                 |                                | enps2s634ji7ein839s9 |
+| enpnimo6251ntimsdpve | diploma-prometheus              |                                | enps2s634ji7ein839s9 |
+| enpobpobpvbhguqu6m6p | diploma-bastion                 |                                | enps2s634ji7ein839s9 |
+| enpv5ata50777bnpmlqc | diploma-internal                |                                | enps2s634ji7ein839s9 |
++----------------------+---------------------------------+--------------------------------+----------------------+
+$ yc alb load-balancer get diploma-alb   # кратко
+  name: diploma-alb, status: ACTIVE
+  locations: ru-central1-a, ru-central1-d
+  listener: http, ports ['80'], external IPv4 62.84.117.222

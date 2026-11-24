@@ -1,0 +1,16 @@
+server.host: "0.0.0.0"
+server.port: 5601
+elasticsearch.hosts: ["{{ elastic_url }}"]
+elasticsearch.username: "kibana_system"
+elasticsearch.password: "{{ kibana_system_password }}"
+
+# Вход по паролю (elastic) и гостевой просмотр без пароля под пользователем
+# kibana_viewer со встроенной ролью viewer (только чтение).
+xpack.security.authc.providers:
+  basic.basic1:
+    order: 0
+  anonymous.anonymous1:
+    order: 1
+    credentials:
+      username: "kibana_viewer"
+      password: "{{ kibana_viewer_password }}"

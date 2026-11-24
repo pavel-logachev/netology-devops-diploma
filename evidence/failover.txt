@@ -1,0 +1,28 @@
+# Исходное состояние
+$ yc alb load-balancer target-states --name diploma-alb --target-group-name diploma-web-tg --backend-group-name diploma-web-bg
+   10.20.11.11 ru-central1-a: HEALTHY, ru-central1-d: HEALTHY
+   10.20.12.11 ru-central1-a: HEALTHY, ru-central1-d: HEALTHY
+$ for i in $(seq 1 20); do curl -s -w "%{http_code}" http://62.84.117.222/; done | ...   # 20 запросов к балансировщику
+     11 web-a HTTP 200
+      9 web-b HTTP 200
+
+# Останавливаю nginx на web-a
+$ ssh web-a "sudo systemctl stop nginx"
+nginx: inactive
+# Через 30 секунд
+$ yc alb load-balancer target-states --name diploma-alb --target-group-name diploma-web-tg --backend-group-name diploma-web-bg
+   10.20.11.11 ru-central1-a: UNHEALTHY, ru-central1-d: UNHEALTHY
+   10.20.12.11 ru-central1-a: HEALTHY, ru-central1-d: HEALTHY
+$ for i in $(seq 1 20); do curl -s -w "%{http_code}" http://62.84.117.222/; done | ...   # 20 запросов к балансировщику
+     20 web-b HTTP 200
+
+# Возвращаю nginx на web-a
+$ ssh web-a "sudo systemctl start nginx"
+nginx: active
+# Через 30 секунд
+$ yc alb load-balancer target-states --name diploma-alb --target-group-name diploma-web-tg --backend-group-name diploma-web-bg
+   10.20.11.11 ru-central1-a: HEALTHY, ru-central1-d: HEALTHY
+   10.20.12.11 ru-central1-a: HEALTHY, ru-central1-d: HEALTHY
+$ for i in $(seq 1 20); do curl -s -w "%{http_code}" http://62.84.117.222/; done | ...   # 20 запросов к балансировщику
+     10 web-a HTTP 200
+     10 web-b HTTP 200

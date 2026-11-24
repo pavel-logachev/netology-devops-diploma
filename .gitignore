@@ -1,0 +1,9 @@
+.secrets/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform/crash.log
+ansible/inventory.yml
+*.retry
+ansible/inventory.*.yml

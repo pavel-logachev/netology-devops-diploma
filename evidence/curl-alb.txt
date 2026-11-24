@@ -1,0 +1,35 @@
+$ curl -v http://62.84.117.222:80   # с внешнего хоста
+*   Trying 62.84.117.222:80...
+* Connected to 62.84.117.222 (62.84.117.222) port 80
+> GET / HTTP/1.1
+> Host: 62.84.117.222
+> User-Agent: curl/8.5.0
+> Accept: */*
+> 
+< HTTP/1.1 200 OK
+< server: ycalb
+< date: Tue, 24 Nov 2026 22:21:34 GMT
+< content-type: text/html
+< content-length: 643
+< last-modified: Tue, 24 Nov 2026 21:42:31 GMT
+< etag: "6b0604c7-283"
+< accept-ranges: bytes
+< 
+{ [643 bytes data]
+* Connection #0 to host 62.84.117.222 left intact
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Курсовая работа DevOps – Павел Логачев</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <h1>Отказоустойчивый сайт в Yandex Cloud</h1>
+    <p>Курсовая работа на профессии «DevOps-инженер с нуля», Нетология.</p>
+    <p class="node">Ответил сервер <b>web-a</b> (10.20.11.11, зона ru-central1-a)</p>
+    <p>Трафик распределяет Application Load Balancer между web-a и web-b.</p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,26 @@
+$ ssh kibana curl -u elastic:*** http://10.20.12.30:9200/_cluster/health?pretty
+{
+  "cluster_name" : "diploma",
+  "status" : "yellow",
+  "timed_out" : false,
+  "number_of_nodes" : 1,
+  "number_of_data_nodes" : 1,
+  "active_primary_shards" : 41,
+  "active_shards" : 41,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 1,
+  "unassigned_primary_shards" : 0,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 0,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 97.61904761904762
+}
+$ curl -u elastic:*** http://10.20.12.30:9200/_cat/indices/*filebeat*?v
+index                                  health docs.count store.size
+.ds-filebeat-8.19.26-2026.11.24-000001 yellow      11292      3.3mb
+$ ssh web-a systemctl is-active nginx prometheus-node-exporter prometheus-nginxlog-exporter filebeat
+active active active active
+$ curl http://10.20.12.30:9200/   # без пароля
+HTTP 401

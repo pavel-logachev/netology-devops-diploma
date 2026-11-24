@@ -1,0 +1,426 @@
+# Пароли берутся из ../.secrets/passwords.yml (не в Git):
+#   ansible-playbook -i inventory.yml site.yml -e @/secrets/passwords.yml
+- name: Базовая подготовка всех ВМ
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Дождаться SSH и cloud-init
+      ansible.builtin.wait_for_connection:
+        timeout: 600
+
+    - name: Дождаться окончания cloud-init
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+
+    - name: Собрать факты
+      ansible.builtin.setup:
+
+    - name: Обновить кеш apt и поставить базовые пакеты
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, gnupg]
+        update_cache: true
+        cache_valid_time: 3600
+
+- name: Репозиторий Elastic (зеркало Яндекса)
+  hosts: web:elastic:kibana
+  become: true
+  tasks:
+    - name: Ключ Elastic
+      ansible.builtin.copy:
+        src: files/elastic.asc
+        dest: /usr/share/keyrings/elastic.asc
+        mode: "0644"
+
+    - name: Репозиторий
+      ansible.builtin.apt_repository:
+        repo: "{{ elastic_apt_repo }}"
+        filename: elastic-8
+        update_cache: true
+
+- name: Веб-серверы
+  hosts: web
+  become: true
+  tasks:
+    - name: Nginx и Node Exporter
+      ansible.builtin.apt:
+        name: [nginx, prometheus-node-exporter]
+
+    - name: Статичный сайт
+      ansible.builtin.template:
+        src: "templates/{{ item }}.j2"
+        dest: "/var/www/html/{{ item }}"
+        mode: "0644"
+      loop: [index.html, style.css]
+
+    - name: Убрать стандартную страницу nginx
+      ansible.builtin.file:
+        path: /var/www/html/index.nginx-debian.html
+        state: absent
+
+    - name: Nginx и Node Exporter запущены
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop: [nginx, prometheus-node-exporter]
+
+    - name: Скачать Nginx Log Exporter
+      ansible.builtin.get_url:
+        url: "https://github.com/martin-helmich/prometheus-nginxlog-exporter/releases/download/v{{ nginxlog_exporter_version }}/prometheus-nginxlog-exporter_{{ nginxlog_exporter_version }}_linux_amd64.deb"
+        dest: /tmp/nginxlog-exporter.deb
+        mode: "0644"
+
+    - name: Установить Nginx Log Exporter
+      ansible.builtin.apt:
+        deb: /tmp/nginxlog-exporter.deb
+
+    - name: Конфигурация Nginx Log Exporter
+      ansible.builtin.template:
+        src: templates/nginxlog-exporter.hcl.j2
+        dest: /etc/prometheus-nginxlog-exporter.hcl
+        mode: "0644"
+      notify: Перезапустить nginxlog-exporter
+
+    - name: Служба Nginx Log Exporter
+      ansible.builtin.template:
+        src: templates/nginxlog-exporter.service.j2
+        dest: /etc/systemd/system/prometheus-nginxlog-exporter.service
+        mode: "0644"
+      notify: Перезапустить nginxlog-exporter
+
+    - name: Nginx Log Exporter запущен
+      ansible.builtin.systemd_service:
+        name: prometheus-nginxlog-exporter
+        state: started
+        enabled: true
+        daemon_reload: true
+
+  handlers:
+    - name: Перезапустить nginxlog-exporter
+      ansible.builtin.systemd_service:
+        name: prometheus-nginxlog-exporter
+        state: restarted
+        daemon_reload: true
+
+- name: Prometheus
+  hosts: prometheus
+  become: true
+  tasks:
+    - name: Установить Prometheus
+      ansible.builtin.apt:
+        name: prometheus
+
+    - name: Конфигурация сбора метрик
+      ansible.builtin.template:
+        src: templates/prometheus.yml.j2
+        dest: /etc/prometheus/prometheus.yml
+        mode: "0644"
+        validate: promtool check config %s
+      notify: Перезапустить Prometheus
+
+    - name: Prometheus запущен
+      ansible.builtin.systemd_service:
+        name: prometheus
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Перезапустить Prometheus
+      ansible.builtin.systemd_service:
+        name: prometheus
+        state: restarted
+
+- name: Elasticsearch
+  hosts: elastic
+  become: true
+  vars:
+    es_keystore: /usr/share/elasticsearch/bin/elasticsearch-keystore
+    es_auth: &es_auth
+      url_username: elastic
+      url_password: "{{ elastic_password }}"
+      force_basic_auth: true
+  tasks:
+    - name: Установить Elasticsearch
+      ansible.builtin.apt:
+        name: "elasticsearch={{ elastic_version }}"
+
+    - name: Конфигурация одиночного узла
+      ansible.builtin.template:
+        src: templates/elasticsearch.yml.j2
+        dest: /etc/elasticsearch/elasticsearch.yml
+        owner: root
+        group: elasticsearch
+        mode: "0660"
+      notify: Перезапустить Elasticsearch
+
+    - name: Размер heap
+      ansible.builtin.copy:
+        dest: /etc/elasticsearch/jvm.options.d/heap.options
+        content: "-Xms1536m\n-Xmx1536m\n"
+        owner: root
+        group: elasticsearch
+        mode: "0660"
+      notify: Перезапустить Elasticsearch
+
+    - name: Содержимое keystore
+      ansible.builtin.command: "{{ es_keystore }} list"
+      register: keystore
+      changed_when: false
+
+    # Пакет при установке включает TLS и генерирует свой пароль; на стенде TLS
+    # выключен (см. README), поэтому убираем его секреты и задаём свой пароль.
+    - name: Удалить секреты автоконфигурации
+      ansible.builtin.command: "{{ es_keystore }} remove {{ item }}"
+      loop:
+        - autoconfiguration.password_hash
+        - xpack.security.http.ssl.keystore.secure_password
+        - xpack.security.transport.ssl.keystore.secure_password
+        - xpack.security.transport.ssl.truststore.secure_password
+      when: item in keystore.stdout_lines
+      notify: Перезапустить Elasticsearch
+
+    - name: Начальный пароль пользователя elastic
+      ansible.builtin.shell: "printf '%s' '{{ elastic_password }}' | {{ es_keystore }} add -x bootstrap.password"
+      when: "'bootstrap.password' not in keystore.stdout_lines"
+      no_log: true
+      notify: Перезапустить Elasticsearch
+
+    - name: Elasticsearch запущен
+      ansible.builtin.systemd_service:
+        name: elasticsearch
+        state: started
+        enabled: true
+
+    - name: Применить изменения конфигурации
+      ansible.builtin.meta: flush_handlers
+
+    - name: Дождаться готовности кластера
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=30s"
+        <<: *es_auth
+      register: health
+      until: health.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Пароль служебного пользователя Kibana
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9200/_security/user/kibana_system/_password
+        method: POST
+        body_format: json
+        body: { password: "{{ kibana_system_password }}" }
+        <<: *es_auth
+      no_log: true
+
+    - name: Роль для Filebeat
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9200/_security/role/filebeat_writer
+        method: PUT
+        body_format: json
+        body:
+          cluster: [monitor, read_ilm, read_pipeline, manage_ilm, manage_index_templates, manage_pipeline]
+          indices:
+            - names: ["filebeat-*"]
+              privileges: [create_doc, view_index_metadata, auto_configure, manage]
+        <<: *es_auth
+
+    - name: Пользователь Filebeat
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9200/_security/user/filebeat
+        method: PUT
+        body_format: json
+        body: { password: "{{ filebeat_password }}", roles: [filebeat_writer] }
+        <<: *es_auth
+      no_log: true
+
+    - name: Пользователь для гостевого просмотра Kibana
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9200/_security/user/kibana_viewer
+        method: PUT
+        body_format: json
+        body: { password: "{{ kibana_viewer_password }}", roles: [viewer] }
+        <<: *es_auth
+      no_log: true
+
+  handlers:
+    - name: Перезапустить Elasticsearch
+      ansible.builtin.systemd_service:
+        name: elasticsearch
+        state: restarted
+
+- name: Filebeat на веб-серверах
+  hosts: web
+  become: true
+  tasks:
+    - name: Установить Filebeat
+      ansible.builtin.apt:
+        name: "filebeat={{ elastic_version }}"
+
+    - name: Конфигурация Filebeat (модуль nginx)
+      ansible.builtin.template:
+        src: templates/filebeat.yml.j2
+        dest: /etc/filebeat/filebeat.yml
+        mode: "0600"
+        validate: filebeat test config --strict.perms=false -c %s
+      notify: Перезапустить Filebeat
+
+    - name: Filebeat запущен
+      ansible.builtin.systemd_service:
+        name: filebeat
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Перезапустить Filebeat
+      ansible.builtin.systemd_service:
+        name: filebeat
+        state: restarted
+
+- name: Kibana
+  hosts: kibana
+  become: true
+  tasks:
+    - name: Установить Kibana
+      ansible.builtin.apt:
+        name: "kibana={{ elastic_version }}"
+
+    - name: Конфигурация Kibana
+      ansible.builtin.template:
+        src: templates/kibana.yml.j2
+        dest: /etc/kibana/kibana.yml
+        owner: root
+        group: kibana
+        mode: "0660"
+      notify: Перезапустить Kibana
+
+    - name: Kibana запущена
+      ansible.builtin.systemd_service:
+        name: kibana
+        state: started
+        enabled: true
+
+    - name: Применить изменения конфигурации
+      ansible.builtin.meta: flush_handlers
+
+    - name: Дождаться готовности Kibana
+      ansible.builtin.uri:
+        url: http://127.0.0.1:5601/api/status
+        url_username: elastic
+        url_password: "{{ elastic_password }}"
+        force_basic_auth: true
+      register: kibana_status
+      until: kibana_status.status == 200 and kibana_status.json.status.overall.level == 'available'
+      retries: 60
+      delay: 10
+
+    - name: Представление данных для логов nginx
+      ansible.builtin.uri:
+        url: http://127.0.0.1:5601/api/data_views/data_view
+        method: POST
+        headers: { kbn-xsrf: "true" }
+        body_format: json
+        body:
+          override: true
+          data_view: { id: nginx-logs, title: "filebeat-*", name: "nginx logs", timeFieldName: "@timestamp" }
+        url_username: elastic
+        url_password: "{{ elastic_password }}"
+        force_basic_auth: true
+
+  handlers:
+    - name: Перезапустить Kibana
+      ansible.builtin.systemd_service:
+        name: kibana
+        state: restarted
+
+- name: Grafana
+  hosts: grafana
+  become: true
+  vars:
+    grafana_deb: "grafana_{{ grafana_version }}_amd64.deb"
+  tasks:
+    - name: Скачать Grafana на ВМ
+      block:
+        - name: Пакет с dl.grafana.com
+          ansible.builtin.get_url:
+            url: "https://dl.grafana.com/oss/release/{{ grafana_deb }}"
+            dest: "/tmp/{{ grafana_deb }}"
+            mode: "0644"
+            timeout: 120
+      rescue:
+        # dl.grafana.com может не отдавать пакет на российские адреса облака.
+        - name: Скачать пакет на машину управления
+          ansible.builtin.get_url:
+            url: "https://dl.grafana.com/oss/release/{{ grafana_deb }}"
+            dest: "/tmp/{{ grafana_deb }}"
+            mode: "0644"
+            timeout: 300
+          delegate_to: localhost
+          become: false
+
+        - name: Передать пакет на ВМ
+          ansible.builtin.copy:
+            src: "/tmp/{{ grafana_deb }}"
+            dest: "/tmp/{{ grafana_deb }}"
+            mode: "0644"
+
+    - name: Установить Grafana
+      ansible.builtin.apt:
+        deb: "/tmp/{{ grafana_deb }}"
+
+    - name: Пароль администратора и анонимный просмотр
+      ansible.builtin.blockinfile:
+        path: /etc/default/grafana-server
+        block: |
+          GF_SECURITY_ADMIN_PASSWORD={{ grafana_admin_password }}
+          GF_AUTH_ANONYMOUS_ENABLED=true
+          GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      no_log: true
+      notify: Перезапустить Grafana
+
+    - name: Каталоги provisioning
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: [/var/lib/grafana/dashboards]
+
+    - name: Источник данных Prometheus и провайдер дашбордов
+      ansible.builtin.template:
+        src: "templates/{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - { src: grafana-datasource.yml.j2, dest: /etc/grafana/provisioning/datasources/prometheus.yml }
+        - { src: grafana-dashboards.yml.j2, dest: /etc/grafana/provisioning/dashboards/diploma.yml }
+      notify: Перезапустить Grafana
+
+    - name: Дашборд веб-серверов
+      ansible.builtin.copy:
+        src: files/web-dashboard.json
+        dest: /var/lib/grafana/dashboards/web-dashboard.json
+        mode: "0644"
+
+    - name: Grafana запущена
+      ansible.builtin.systemd_service:
+        name: grafana-server
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Применить изменения конфигурации
+      ansible.builtin.meta: flush_handlers
+
+    - name: Дождаться Grafana
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/api/health
+      register: grafana_health
+      until: grafana_health.status == 200
+      retries: 30
+      delay: 5
+
+  handlers:
+    - name: Перезапустить Grafana
+      ansible.builtin.systemd_service:
+        name: grafana-server
+        state: restarted

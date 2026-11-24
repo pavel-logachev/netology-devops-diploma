@@ -1,0 +1,9 @@
+elastic_version: "8.19.26"
+grafana_version: "13.3.2"
+nginxlog_exporter_version: "1.11.0"
+
+elastic_apt_repo: "deb [signed-by=/usr/share/keyrings/elastic.asc] http://mirror.yandex.ru/mirrors/elastic/8/ stable main"
+
+elastic_ip: "{{ hostvars['elastic'].private_ip }}"
+prometheus_ip: "{{ hostvars['prometheus'].private_ip }}"
+elastic_url: "http://{{ elastic_ip }}:9200"

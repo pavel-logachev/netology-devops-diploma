@@ -1,0 +1,44 @@
+$ yc compute snapshot-schedule get diploma-daily
+id: fd8d48coohrn0alb5pmq
+folder_id: b1g6rd3uo8sajkqcmnbk
+created_at: "2026-11-24T21:25:47Z"
+name: diploma-daily
+description: Ежедневный снимок всех дисков стенда, хранение 7 дней
+status: ACTIVE
+schedule_policy:
+  start_at: "1970-01-01T00:00:00Z"
+  expression: 0 0 * * *
+retention_period: 604800s
+snapshot_spec:
+  description: diploma daily snapshot
+  labels:
+    project: netology-diploma
+
+
+$ yc compute snapshot-schedule list-disks diploma-daily
++----------------------+------+-------------+---------------+--------+----------------------+-----------------+-------------+
+|          ID          | NAME |    SIZE     |     ZONE      | STATUS |     INSTANCE IDS     | PLACEMENT GROUP | DESCRIPTION |
++----------------------+------+-------------+---------------+--------+----------------------+-----------------+-------------+
+| fhm5ks05ka8k73o5s4up |      | 10737418240 | ru-central1-a | READY  | fhmgopi6335mjccpgba7 |                 |             |
+| fhmh7dkbfnj7cfstllio |      | 10737418240 | ru-central1-a | READY  | fhmmu76rvdmm49nn9os2 |                 |             |
+| fhmnd2h44ss1j3fkc2ff |      | 10737418240 | ru-central1-a | READY  | fhm1p3tu1j9stvakv6f8 |                 |             |
+| fhmpd40vt638i21d41m1 |      | 10737418240 | ru-central1-a | READY  | fhmphskughtmqepkpdhi |                 |             |
+| fv4gal8udqdi2huc7bln |      | 16106127360 | ru-central1-d | READY  | fv46jadq619uq12dgmar |                 |             |
+| fv4jh4fkldc1p4ca4rm6 |      | 10737418240 | ru-central1-d | READY  | fv48b3rh26c8ub4v1ngk |                 |             |
+| fv4pokk9m7t80f2s6nbu |      | 21474836480 | ru-central1-d | READY  | fv4a5i53ibqvv44sr0ha |                 |             |
++----------------------+------+-------------+---------------+--------+----------------------+-----------------+-------------+
+
+
+$ yc compute snapshot list   # снимки, созданные расписанием при тестовом запуске в 22:18 UTC
++----------------------+---------------------------------------------------+----------------------+--------+
+|          ID          |                       NAME                        |     PRODUCT IDS      | STATUS |
++----------------------+---------------------------------------------------+----------------------+--------+
+| fd81qk9avkrohcq6nkv9 | prometheus_fv4gal8udqdi2huc7bln_202611242218_a5fo | f2efp64tmlng4fhbnila | READY  |
+| fd83u84m5n5jpv96u673 | kibana_fhmh7dkbfnj7cfstllio_202611242218_83be     | f2efp64tmlng4fhbnila | READY  |
+| fd85nvvotnbntgqinqth | web-a_fhmpd40vt638i21d41m1_202611242218_6pt9      | f2efp64tmlng4fhbnila | READY  |
+| fd8dpbunq3ne79iav9mg | web-b_fv4jh4fkldc1p4ca4rm6_202611242218_uuoe      | f2efp64tmlng4fhbnila | READY  |
+| fd8kshrsn0r8c1muvq3p | grafana_fhmnd2h44ss1j3fkc2ff_202611242218_6tep    | f2efp64tmlng4fhbnila | READY  |
+| fd8n5k5vb4nfukp2p0g0 | elastic_fv4pokk9m7t80f2s6nbu_202611242218_alhi    | f2efp64tmlng4fhbnila | READY  |
+| fd8t7onl8jp5ro7jmkrs | bastion_fhm5ks05ka8k73o5s4up_202611242218_odde    | f2efp64tmlng4fhbnila | READY  |
++----------------------+---------------------------------------------------+----------------------+--------+
+

@@ -1,0 +1,24 @@
+# Сгенерировано Terraform. Все хосты, кроме bastion, доступны только через bastion.
+all:
+  vars:
+    ansible_user: ${ssh_user}
+    ansible_ssh_private_key_file: /root/.ssh/id_ed25519
+    bastion_public_ip: ${bastion_ip}
+  children:
+%{ for group in distinct(flatten([for vm in vms : vm.groups])) ~}
+    ${group}:
+      hosts:
+%{ for name, vm in vms ~}
+%{ if contains(vm.groups, group) ~}
+        ${name}:
+          ansible_host: ${group == "bastion" ? bastion_ip : vm.ip}
+          private_ip: ${vm.ip}
+%{ endif ~}
+%{ endfor ~}
+%{ if group != "bastion" ~}
+      vars:
+        ansible_ssh_common_args: >-
+          -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/.ssh/known_hosts
+          -o ProxyCommand="ssh -i /root/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/.ssh/known_hosts -W %h:%p ${ssh_user}@${bastion_ip}"
+%{ endif ~}
+%{ endfor ~}

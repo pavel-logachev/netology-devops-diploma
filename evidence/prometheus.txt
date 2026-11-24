@@ -1,0 +1,12 @@
+$ ssh grafana curl http://10.20.12.20:9090/api/v1/targets   # Prometheus в приватной подсети, доступ только с Grafana
+  nginxlog  web-b   http://10.20.12.11:4040/metrics          up
+  nginxlog  web-a   http://10.20.11.11:4040/metrics          up
+  node      web-a   http://10.20.11.11:9100/metrics          up
+  node      web-b   http://10.20.12.11:9100/metrics          up
+  prometheus -       http://localhost:9090/metrics            up
+
+$ curl .../api/v1/query?query=sum by(host,status)(nginx_http_response_count_total)
+   {'host': 'web-a', 'status': '200'} 5226
+   {'host': 'web-a', 'status': '404'} 126
+   {'host': 'web-b', 'status': '200'} 5596
+   {'host': 'web-b', 'status': '404'} 133
